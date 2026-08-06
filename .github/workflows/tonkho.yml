@@ -1,0 +1,37 @@
+name: Cap nhat ton kho tu Google Sheet
+
+on:
+  schedule:
+    - cron: '0 * * * *'      # chạy mỗi giờ (giờ UTC, GitHub có thể trễ 5-15 phút)
+  workflow_dispatch:          # cho phép bấm chạy tay trong tab Actions
+
+permissions:
+  contents: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Cai thu vien
+        run: pip install --quiet cryptography
+
+      - name: Lay ton kho va ma hoa
+        env:
+          SHEET_URL: ${{ secrets.SHEET_URL }}
+          PW_KH: ${{ secrets.PW_KH }}
+          PW_NB: ${{ secrets.PW_NB }}
+        run: python build_tonkho.py
+
+      - name: Day len GitHub
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add tonkho.json
+          git diff --staged --quiet && echo "Khong co thay doi" || \
+            (git commit -m "Cap nhat ton kho $(TZ=Asia/Ho_Chi_Minh date +'%d/%m/%Y %H:%M')" && git push)
