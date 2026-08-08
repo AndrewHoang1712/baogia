@@ -2,7 +2,7 @@ name: Cap nhat ton kho tu Google Sheet
 
 on:
   schedule:
-    - cron: '0 * * * *'      # chạy mỗi giờ (giờ UTC, GitHub có thể trễ 5-15 phút)
+    - cron: '0 * * * *'      # chạy mỗi 60 phút (GitHub có thể trễ 5-15 phút)
   workflow_dispatch:          # cho phép bấm chạy tay trong tab Actions
 
 permissions:
@@ -32,6 +32,6 @@ jobs:
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add tonkho.json
+          git add tonkho.json tonkho.hash
           git diff --staged --quiet && echo "Khong co thay doi" || \
             (git commit -m "Cap nhat ton kho $(TZ=Asia/Ho_Chi_Minh date +'%d/%m/%Y %H:%M')" && git push)
