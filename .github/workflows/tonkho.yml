@@ -2,7 +2,7 @@ name: Cap nhat ton kho tu Google Sheet
 
 on:
   schedule:
-    - cron: '0 * * * *'      # chạy mỗi 60 phút (GitHub có thể trễ 5-15 phút)
+    - cron: '10 * * * *'     # mỗi giờ vào phút 17 (tránh phút 0 vì GitHub quá tải hay bỏ lịch)
   workflow_dispatch:          # cho phép bấm chạy tay trong tab Actions
 
 permissions:
