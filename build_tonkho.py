@@ -27,6 +27,17 @@ if not stock:
     sys.exit('Google Sheet khong co du lieu ton kho')
 print(f'Doc duoc {len(stock)} ma tu Google Sheet')
 
+# ---- 1b. Bo qua neu ton kho KHONG doi (tranh commit rac moi 15 phut) ----
+fingerprint = hashlib.sha256(json.dumps(stock, sort_keys=True).encode()).hexdigest()
+HASH_FILE = 'tonkho.hash'
+if os.path.exists(HASH_FILE):
+    try:
+        if open(HASH_FILE).read().strip() == fingerprint:
+            print('Ton kho khong thay doi -> khong tao file moi')
+            sys.exit(0)
+    except Exception:
+        pass
+
 # ---- 2. Ma hoa 2 lop (khach / noi bo) ----
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
@@ -47,5 +58,8 @@ data = {
 }
 with open('tonkho.json', 'w', encoding='utf-8') as f:
     json.dump(data, f)
+
+with open(HASH_FILE, 'w') as f:
+    f.write(fingerprint)
 
 print(f"Da tao tonkho.json ({os.path.getsize('tonkho.json')//1024} KB) luc {data['date']}")
