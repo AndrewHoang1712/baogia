@@ -23,12 +23,13 @@ except Exception:
     sys.exit('Khong doc duoc du lieu tra ve (kiem tra lai link /exec): ' + raw[:200])
 
 stock = {str(k).strip().upper(): int(v) for k, v in payload.get('stock', {}).items()}
+kho   = {str(k).strip().upper(): [int(x) for x in v] for k, v in payload.get('kho', {}).items()}
 if not stock:
     sys.exit('Google Sheet khong co du lieu ton kho')
-print(f'Doc duoc {len(stock)} ma tu Google Sheet')
+print(f'Doc duoc {len(stock)} ma tu Google Sheet' + (f' (co chi tiet 2 kho: {len(kho)} ma)' if kho else ' (chi co tong ton)'))
 
 # ---- 1b. Bo qua neu ton kho KHONG doi (tranh commit rac moi 15 phut) ----
-fingerprint = hashlib.sha256(json.dumps(stock, sort_keys=True).encode()).hexdigest()
+fingerprint = hashlib.sha256(json.dumps([stock, kho], sort_keys=True).encode()).hexdigest()
 HASH_FILE = 'tonkho.hash'
 if os.path.exists(HASH_FILE):
     try:
@@ -54,7 +55,7 @@ data = {
     'date': vn_now.strftime('%d/%m/%Y %H:%M'),
     's':  b(salt),
     'i1': b(i1), 'c1': b(AESGCM(k_kh).encrypt(i1, json.dumps(stock_kh, ensure_ascii=False).encode(), None)),
-    'i2': b(i2), 'c2': b(AESGCM(k_nb).encrypt(i2, json.dumps(stock,    ensure_ascii=False).encode(), None)),
+    'i2': b(i2), 'c2': b(AESGCM(k_nb).encrypt(i2, json.dumps(kho or stock, ensure_ascii=False).encode(), None)),
 }
 with open('tonkho.json', 'w', encoding='utf-8') as f:
     json.dump(data, f)
