@@ -2,7 +2,7 @@ name: Cap nhat ton kho tu Google Sheet
 
 on:
   schedule:
-    - cron: '10 * * * *'     # mỗi giờ vào phút 17 (tránh phút 0 vì GitHub quá tải hay bỏ lịch)
+    - cron: '17 * * * *'     # mỗi giờ vào phút 17 (tránh phút 0 vì GitHub quá tải hay bỏ lịch)
   workflow_dispatch:          # cho phép bấm chạy tay trong tab Actions
 
 permissions:
@@ -26,6 +26,7 @@ jobs:
           SHEET_URL: ${{ secrets.SHEET_URL }}
           PW_KH: ${{ secrets.PW_KH }}
           PW_NB: ${{ secrets.PW_NB }}
+          NB_SECRET: ${{ secrets.NB_SECRET }}
         run: python build_tonkho.py
 
       - name: Day len GitHub
