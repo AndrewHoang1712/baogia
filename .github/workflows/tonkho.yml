@@ -3,9 +3,11 @@ name: Cap nhat ton kho tu Google Sheet
 on:
   schedule:
     # GitHub chạy theo giờ UTC. Việt Nam = UTC+7.
-    # UTC 0h-16h  =  VN 7h-23h  -> mỗi giờ 1 lần, phút 17 (tránh phút 0 vì GitHub quá tải hay bỏ lịch)
-    # Từ 0h-6h sáng VN không chạy.
-    - cron: '17 0-16 * * *'
+    # Khung giờ mong muốn: VN 7h17 -> 21h17. Ngoài khung đó không chạy.
+    # Đặt HAI mốc phút khác nhau: GitHub hay bỏ qua lịch khi quá tải,
+    # lỡ mất mốc này thì 30 phút sau còn mốc kia.
+    - cron: '17 0-14 * * *'     # VN 7h17, 8h17 ... 21h17
+    - cron: '47 0-13 * * *'     # du phong: VN 7h47, 8h47 ... 20h47
   workflow_dispatch:          # cho phép bấm chạy tay trong tab Actions
 
 permissions:
