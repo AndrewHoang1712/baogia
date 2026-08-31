@@ -33,7 +33,9 @@ print(f'Doc duoc {len(stock)} ma tu Google Sheet' + (f' (co chi tiet 2 kho: {len
 
 # ---- 1b. Bo qua neu ton kho KHONG doi (tranh commit rac moi 15 phut) ----
 # mat khau cung nam trong fingerprint -> doi PW_NB/PW_KH la file duoc tao lai ngay
-_pw_tag = hashlib.sha256((PW_KH + '|' + PW_NB + '|' + NB_SECRET).encode()).hexdigest()
+# 'v2' = doi cach xu ly ton AM (am -> 0 cho ban khach). Doi chuoi nay se ep tao lai file
+# du ton kho khong thay doi.
+_pw_tag = hashlib.sha256((PW_KH + '|' + PW_NB + '|' + NB_SECRET + '|v2').encode()).hexdigest()
 fingerprint = hashlib.sha256(json.dumps([stock, kho, _pw_tag], sort_keys=True).encode()).hexdigest()
 HASH_FILE = 'tonkho.hash'
 if os.path.exists(HASH_FILE):
@@ -47,7 +49,8 @@ if os.path.exists(HASH_FILE):
 # ---- 2. Ma hoa 2 lop (khach / noi bo) ----
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
-stock_kh = {k: (-1 if v > 20 else v) for k, v in stock.items()}   # khach: ton > 20 -> "Con hang"
+# khach: ton > 20 -> "Con hang" (-1); ton AM coi nhu HET (0) -> hien "Lien he"
+stock_kh = {k: (-1 if v > 20 else max(v, 0)) for k, v in stock.items()}
 
 salt = os.urandom(16)
 k_kh = hashlib.pbkdf2_hmac('sha256', PW_KH.encode(), salt, 200000, 32)
