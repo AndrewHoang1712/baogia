@@ -16,7 +16,15 @@ if not SHEET_URL or not PW_KH or not PW_NB or not NB_SECRET:
     sys.exit('Thieu bien moi truong SHEET_URL / PW_KH / PW_NB / NB_SECRET (dat trong GitHub Secrets)')
 
 # ---- 1. Lay du lieu tu Google Sheet ----
-req = urllib.request.Request(SHEET_URL, headers={'User-Agent': 'HDGroup-TonKho'})
+# CHONG CACHE: Google hay tra ve ban da luu san cho cung mot URL.
+# Them tham so thoi gian + header no-cache de bat buoc doc moi.
+import time as _time
+_url = SHEET_URL + ('&' if '?' in SHEET_URL else '?') + 'nocache=' + str(int(_time.time()))
+req = urllib.request.Request(_url, headers={
+    'User-Agent': 'HDGroup-TonKho/' + str(int(_time.time())),
+    'Cache-Control': 'no-cache, no-store, max-age=0',
+    'Pragma': 'no-cache',
+})
 raw = urllib.request.urlopen(req, timeout=60).read().decode('utf-8')
 if raw.strip() == 'denied':
     sys.exit('Google Sheet tu choi: KEY trong SHEET_URL khong dung')
@@ -30,6 +38,11 @@ kho   = {str(k).strip().upper(): [int(x) for x in v] for k, v in payload.get('kh
 if not stock:
     sys.exit('Google Sheet khong co du lieu ton kho')
 print(f'Doc duoc {len(stock)} ma tu Google Sheet' + (f' (co chi tiet 2 kho: {len(kho)} ma)' if kho else ' (chi co tong ton)'))
+# Dau van tay CUA RIENG DU LIEU SHEET - de biet Sheet co that su doi hay khong
+_fp_sheet = hashlib.sha256(json.dumps([stock, kho], sort_keys=True).encode()).hexdigest()[:12]
+print('Dau van tay du lieu Sheet:', _fp_sheet)
+print('Vai ma dau:', list(stock.items())[:5])
+print('Tong ton toan bo:', sum(stock.values()))
 
 # ---- 1b. Bo qua neu ton kho KHONG doi (tranh commit rac moi 15 phut) ----
 # mat khau cung nam trong fingerprint -> doi PW_NB/PW_KH la file duoc tao lai ngay
@@ -41,7 +54,9 @@ HASH_FILE = 'tonkho.hash'
 if os.path.exists(HASH_FILE):
     try:
         if open(HASH_FILE).read().strip() == fingerprint:
-            print('Ton kho khong thay doi -> khong tao file moi')
+            print('Ton kho KHONG doi so voi lan truoc -> khong tao file moi.')
+            print('  (Neu Google Sheet ro rang da doi ma van thay dong nay, nghia la link Apps Script'
+                  ' dang tra ve du lieu cu hoac doc nham tab.)')
             sys.exit(0)
     except Exception:
         pass
