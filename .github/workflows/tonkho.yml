@@ -8,6 +8,11 @@ on:
     # UTC 1h-14h = VN 8h-21h, moi 30 phut.
     - cron: '0,30 1-14 * * *'
   workflow_dispatch:          # cho phép bấm chạy tay trong tab Actions
+  push:                       # đẩy file mới lên (vd index.html) là cập nhật tồn luôn
+    branches: [main]
+    paths-ignore:             # bỏ qua chính 2 file bot tạo ra, tránh chạy vòng lặp
+      - 'tonkho.json'
+      - 'tonkho.hash'
 
 permissions:
   contents: write
