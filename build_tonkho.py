@@ -37,6 +37,30 @@ stock = {str(k).strip().upper(): int(v) for k, v in payload.get('stock', {}).ite
 kho   = {str(k).strip().upper(): [int(x) for x in v] for k, v in payload.get('kho', {}).items()}
 if not stock:
     sys.exit('Google Sheet khong co du lieu ton kho')
+
+# ---- 1a0. CHAN BAN DOC THIEU: Google Sheet thinh thoang chi tra ve mot phan ma ----
+# (da gap ~32 lan trong 80 ngay, co lan chi 700/5185 ma). Neu day ban thieu len web thi
+# hang loat ma dang con hang se hien "Lien he" cho den lan quet sau -> khach tuong het hang.
+# Gap truong hop do thi GIU NGUYEN tonkho.json cu, khong ghi de. So ma cua lan quet tot
+# gan nhat luu trong tonkho-lichsu.json (khoa 'n') - khong co file do thi bo qua buoc nay.
+NGUONG_THIEU = 0.85
+try:
+    import zlib as _z
+    from cryptography.hazmat.primitives.ciphers.aead import AESGCM as _A
+    if os.path.exists('tonkho-lichsu.json'):
+        _F = json.load(open('tonkho-lichsu.json', encoding='utf-8'))
+        _k = hashlib.pbkdf2_hmac('sha256', NB_SECRET.encode(), base64.b64decode(_F['s']), 200000, 32)
+        _n = json.loads(_z.decompress(_A(_k).decrypt(base64.b64decode(_F['i']), base64.b64decode(_F['c']), None))).get('n', 0)
+        if _n and len(stock) < NGUONG_THIEU * _n:
+            print('CANH BAO: Google Sheet chi tra ve %d ma (lan tot gan nhat %d, nguong %d%%).'
+                  % (len(stock), _n, NGUONG_THIEU * 100))
+            print('  -> Nghi Sheet doc thieu. GIU NGUYEN tonkho.json cu, khong day ban thieu len web.')
+            print('  -> Lan quet sau (30 phut nua) se thu lai. Neu lap lai nhieu lan, kiem tra tab 2KHO.')
+            sys.exit(0)
+except SystemExit:
+    raise
+except Exception as _e:
+    print('(bo qua buoc chan ban doc thieu:', type(_e).__name__, _e, ')')
 print(f'Doc duoc {len(stock)} ma tu Google Sheet' + (f' (co chi tiet 2 kho: {len(kho)} ma)' if kho else ' (chi co tong ton)'))
 # Dau van tay CUA RIENG DU LIEU SHEET - de biet Sheet co that su doi hay khong
 _fp_sheet = hashlib.sha256(json.dumps([stock, kho], sort_keys=True).encode()).hexdigest()[:12]
@@ -44,15 +68,31 @@ print('Dau van tay du lieu Sheet:', _fp_sheet)
 print('Vai ma dau:', list(stock.items())[:5])
 print('Tong ton toan bo:', sum(stock.values()))
 
-# ---- 1a. LICH SU TON KHO THEO NGAY (cho bieu do ton kho tren trang noi bo) ----
-# File tonkho-lichsu.json: ma hoa bang NB_SECRET (giong c2) -> chi tai khoan noi bo mo duoc.
-# Moi ngay chi giu 1 gia tri / ma (gia tri MOI NHAT trong ngay), va chi ghi khi ton DOI.
+# ---- 1a. LICH SU TON KHO 5 MOC / NGAY (cho bieu do ton kho tren trang noi bo) ----
+# File tonkho-lichsu.json: zlib + AES-GCM, khoa tu NB_SECRET (giong c2) -> chi tai khoan noi bo mo duoc.
+# Luu ton tai 5 moc gio VN moi ngay: 9h, 12h, 16h, 19h, 22h. Moi lan quet thuoc ve moc GAN NHAT
+# PHIA SAU no (tre toi 15 phut van tinh cho moc vua qua): quet 8h30 / 9h07 -> moc 9h, 9h40 -> moc 12h,
+# 21h30 -> moc 22h, sau 22h15 -> moc 9h hom sau. Nhieu lan quet cung 1 moc thi lan SAU CUNG thang.
+# Chi ghi khi ton DOI (o trong = ton giu nguyen tu moc truoc).
+# Dinh dang (sau giai nen): {v:2, d0:'YYYY-MM-DD', moc:[9,12,16,19,22], dn:o_cuoi, n:so_ma,
+#                            h:{MA:[o,k1,k2, o,k1,k2,...]}}   voi o = so_ngay_tu_d0 * 5 + thu_tu_moc
 # TOAN BO phan nay boc try/except: loi gi o day cung KHONG duoc lam hong viec cap nhat ton kho.
 LS_FILE = 'tonkho-lichsu.json'
-LS_NGUONG = 0.85          # ngay doc duoc it hon 85% so ma ngay truoc -> coi la Sheet doc thieu, bo qua
+LS_NGUONG = 0.85          # lan quet doc duoc it hon 85% so ma lan truoc -> coi la Sheet doc thieu, bo qua
+LS_MOC = [9, 12, 16, 19, 22]
+LS_TRE = 15               # phut: lan quet tre toi 15 phut sau moc van tinh cho moc do
 
 def _ls_key(salt):
     return hashlib.pbkdf2_hmac('sha256', NB_SECRET.encode(), salt, 200000, 32)
+
+def ls_o(luc, d0):
+    """Vi tri o (ngay*5 + moc) cho 1 lan quet luc `luc` (datetime gio VN)."""
+    ngay = (luc.date() - d0).days
+    phut = luc.hour * 60 + luc.minute
+    for k, h in enumerate(LS_MOC):
+        if phut <= h * 60 + LS_TRE:
+            return ngay * len(LS_MOC) + k
+    return (ngay + 1) * len(LS_MOC)          # sau 22h15 -> moc 9h hom sau
 
 def ls_doc():
     """Doc + giai ma file lich su. Chua co file -> None."""
@@ -70,24 +110,27 @@ def ls_ghi(obj):
     from cryptography.hazmat.primitives.ciphers.aead import AESGCM
     raw = zlib.compress(json.dumps(obj, separators=(',', ':')).encode('utf-8'), 9)
     salt, iv = os.urandom(16), os.urandom(12)
-    F = {'v': 1, 's': base64.b64encode(salt).decode(), 'i': base64.b64encode(iv).decode(),
+    F = {'v': obj.get('v', 2), 's': base64.b64encode(salt).decode(), 'i': base64.b64encode(iv).decode(),
          'c': base64.b64encode(AESGCM(_ls_key(salt)).encrypt(iv, raw, None)).decode()}
     with open(LS_FILE, 'w', encoding='utf-8') as f:
         json.dump(F, f, separators=(',', ':'))
 
-def ls_cap_nhat(kho_map, hom_nay):
-    """Nap ton hom nay vao lich su. Tra ve True neu file thay doi (can commit)."""
+def ls_cap_nhat(kho_map, luc):
+    """Nap ton cua lan quet luc `luc` (gio VN) vao lich su. Tra ve True neu file thay doi (can commit)."""
     obj = ls_doc()
     if obj is None:
         print('[LICH SU] chua co file lich su -> bo qua (file goc duoc tao 1 lan tu lich su git)')
         return False
+    if obj.get('v') != 2 or obj.get('moc') != LS_MOC:
+        print('[LICH SU] file lich su khac dinh dang (v=%s, moc=%s) -> KHONG ghi de' % (obj.get('v'), obj.get('moc')))
+        return False
     d0 = datetime.date.fromisoformat(obj['d0'])
-    i = (hom_nay - d0).days
+    i = ls_o(luc, d0)
     if i < obj.get('dn', 0):
-        print('[LICH SU] ngay hom nay cu hon du lieu da co -> bo qua'); return False
+        print('[LICH SU] lan quet cu hon du lieu da co -> bo qua'); return False
     n_truoc = obj.get('n', 0)
     if n_truoc and len(kho_map) < LS_NGUONG * n_truoc:
-        print('[LICH SU] CANH BAO: chi doc duoc %d ma (ngay truoc %d) -> nghi Sheet doc thieu, KHONG ghi lich su'
+        print('[LICH SU] CANH BAO: chi doc duoc %d ma (lan truoc %d) -> nghi Sheet doc thieu, KHONG ghi lich su'
               % (len(kho_map), n_truoc))
         return False
     h = obj.setdefault('h', {})
@@ -100,28 +143,27 @@ def ls_cap_nhat(kho_map, hom_nay):
         a = h.get(sku)
         if not a:
             h[sku] = [i, k1, k2]; doi += 1; continue
-        if a[-3] == i:                                  # da co diem HOM NAY -> cap nhat gia tri moi nhat
+        if a[-3] == i:                                  # da co diem o MOC NAY -> lan quet sau thang
             if a[-2] != k1 or a[-1] != k2:
                 a[-2], a[-1] = k1, k2; doi += 1
-                if len(a) >= 6 and a[-5] == k1 and a[-4] == k2:   # quay ve dung gia tri hom truoc -> bo diem
+                if len(a) >= 6 and a[-5] == k1 and a[-4] == k2:   # quay ve dung gia tri moc truoc -> bo diem
                     del a[-3:]
-        elif a[-2] != k1 or a[-1] != k2:                # ngay moi va ton doi -> them diem
+        elif a[-2] != k1 or a[-1] != k2:                # moc moi va ton doi -> them diem
             a.extend([i, k1, k2]); doi += 1
-    sang_ngay = i > obj.get('dn', 0)
-    obj['dn'] = i
-    obj['n'] = len(kho_map)
-    if not doi and not sang_ngay:
+    if not doi:
         print('[LICH SU] khong doi'); return False
+    obj['dn'] = max(i, obj.get('dn', 0))
+    obj['n'] = len(kho_map)
     ls_ghi(obj)
-    print('[LICH SU] ngay %s: %d ma doi ton | tong %d ma | %d KB'
-          % (hom_nay.isoformat(), doi, len(h), os.path.getsize(LS_FILE) // 1024))
+    print('[LICH SU] %s -> moc %dh: %d ma doi ton | tong %d ma | %d KB'
+          % (luc.strftime('%d/%m %H:%M'), LS_MOC[i % len(LS_MOC)], doi, len(h), os.path.getsize(LS_FILE) // 1024))
     return True
 
 def ls_chay(kho_map):
     """Goi tu 2 cho (co doi / khong doi ton). Khong bao gio nem loi ra ngoai."""
     try:
-        hom_nay = datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=7))).date()
-        if ls_cap_nhat(kho_map, hom_nay):
+        luc = datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=7)))
+        if ls_cap_nhat(kho_map, luc):
             import subprocess
             subprocess.run(['git', 'add', LS_FILE], check=False)
     except Exception as e:
@@ -140,7 +182,7 @@ if os.path.exists(HASH_FILE):
             print('Ton kho KHONG doi so voi lan truoc -> khong tao file moi.')
             print('  (Neu Google Sheet ro rang da doi ma van thay dong nay, nghia la link Apps Script'
                   ' dang tra ve du lieu cu hoac doc nham tab.)')
-            ls_chay(kho or stock)          # sang ngay moi thi van danh dau ngay (toi da 1 lan/ngay)
+            ls_chay(kho or stock)          # lan ghi truoc loi thi lan nay ghi bu (khong doi thi khong ghi gi)
             sys.exit(0)
     except Exception:
         pass
