@@ -75,24 +75,30 @@ print('Tong ton toan bo:', sum(stock.values()))
 # 21h30 -> moc 22h, sau 22h15 -> moc 9h hom sau. Nhieu lan quet cung 1 moc thi lan SAU CUNG thang.
 # Chi ghi khi ton DOI (o trong = ton giu nguyen tu moc truoc).
 # Dinh dang (sau giai nen): {v:2, d0:'YYYY-MM-DD', moc:[9,12,16,19,22], dn:o_cuoi, n:so_ma,
-#                            h:{MA:[o,k1,k2, o,k1,k2,...]}}   voi o = so_ngay_tu_d0 * 5 + thu_tu_moc
+#                            h:{MA:[o,k1,k2, o,k1,k2,...]}}   voi o = so_ngay_tu_d0 * SO_MOC + thu_tu_moc
 # TOAN BO phan nay boc try/except: loi gi o day cung KHONG duoc lam hong viec cap nhat ton kho.
 LS_FILE = 'tonkho-lichsu.json'
 LS_NGUONG = 0.85          # lan quet doc duoc it hon 85% so ma lan truoc -> coi la Sheet doc thieu, bo qua
-LS_MOC = [9, 12, 16, 19, 22]
-LS_TRE = 15               # phut: lan quet tre toi 15 phut sau moc van tinh cho moc do
+# v3 (09/11/2026): luu MOI lan quet - moc moi 30 phut tu 8h00 den 21h30 (dung nhip bot chay).
+# LS_MOC tinh bang PHUT ke tu 0h (v2 cu tinh bang GIO).
+LS_MOC = list(range(8 * 60, 21 * 60 + 30 + 1, 30))    # 480,510,...,1290 -> 28 moc/ngay
+LS_TRE = 14               # phut: lan quet tre toi 14 phut sau moc van tinh cho moc do
+LS_V = 3
+
+def ls_gio(m):            # 540 -> '9h' | 570 -> '9h30'
+    return '%dh' % (m // 60) if m % 60 == 0 else '%dh%02d' % (m // 60, m % 60)
 
 def _ls_key(salt):
     return hashlib.pbkdf2_hmac('sha256', NB_SECRET.encode(), salt, 200000, 32)
 
 def ls_o(luc, d0):
-    """Vi tri o (ngay*5 + moc) cho 1 lan quet luc `luc` (datetime gio VN)."""
+    """Vi tri o (ngay*SO_MOC + moc) cho 1 lan quet luc `luc` (datetime gio VN)."""
     ngay = (luc.date() - d0).days
     phut = luc.hour * 60 + luc.minute
-    for k, h in enumerate(LS_MOC):
-        if phut <= h * 60 + LS_TRE:
+    for k, m in enumerate(LS_MOC):
+        if phut <= m + LS_TRE:
             return ngay * len(LS_MOC) + k
-    return (ngay + 1) * len(LS_MOC)          # sau 22h15 -> moc 9h hom sau
+    return (ngay + 1) * len(LS_MOC)          # quet sau 21h44 -> moc 8h hom sau (dem khong doi ton)
 
 def ls_doc():
     """Doc + giai ma file lich su. Chua co file -> None."""
@@ -110,7 +116,7 @@ def ls_ghi(obj):
     from cryptography.hazmat.primitives.ciphers.aead import AESGCM
     raw = zlib.compress(json.dumps(obj, separators=(',', ':')).encode('utf-8'), 9)
     salt, iv = os.urandom(16), os.urandom(12)
-    F = {'v': obj.get('v', 2), 's': base64.b64encode(salt).decode(), 'i': base64.b64encode(iv).decode(),
+    F = {'v': obj.get('v', LS_V), 's': base64.b64encode(salt).decode(), 'i': base64.b64encode(iv).decode(),
          'c': base64.b64encode(AESGCM(_ls_key(salt)).encrypt(iv, raw, None)).decode()}
     with open(LS_FILE, 'w', encoding='utf-8') as f:
         json.dump(F, f, separators=(',', ':'))
@@ -121,7 +127,7 @@ def ls_cap_nhat(kho_map, luc):
     if obj is None:
         print('[LICH SU] chua co file lich su -> bo qua (file goc duoc tao 1 lan tu lich su git)')
         return False
-    if obj.get('v') != 2 or obj.get('moc') != LS_MOC:
+    if obj.get('v') != LS_V or obj.get('moc') != LS_MOC:
         print('[LICH SU] file lich su khac dinh dang (v=%s, moc=%s) -> KHONG ghi de' % (obj.get('v'), obj.get('moc')))
         return False
     d0 = datetime.date.fromisoformat(obj['d0'])
@@ -155,8 +161,8 @@ def ls_cap_nhat(kho_map, luc):
     obj['dn'] = max(i, obj.get('dn', 0))
     obj['n'] = len(kho_map)
     ls_ghi(obj)
-    print('[LICH SU] %s -> moc %dh: %d ma doi ton | tong %d ma | %d KB'
-          % (luc.strftime('%d/%m %H:%M'), LS_MOC[i % len(LS_MOC)], doi, len(h), os.path.getsize(LS_FILE) // 1024))
+    print('[LICH SU] %s -> moc %s: %d ma doi ton | tong %d ma | %d KB'
+          % (luc.strftime('%d/%m %H:%M'), ls_gio(LS_MOC[i % len(LS_MOC)]), doi, len(h), os.path.getsize(LS_FILE) // 1024))
     return True
 
 def ls_chay(kho_map):
